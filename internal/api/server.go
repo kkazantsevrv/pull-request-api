@@ -9,6 +9,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/oapi-codegen/runtime"
+	"pull-request-api.com/internal/models"
+	"pull-request-api.com/internal/service"
 )
 
 // ServerInterface represents all server handlers.
@@ -27,10 +29,10 @@ type ServerInterface interface {
 	PostTeamAdd(w http.ResponseWriter, r *http.Request)
 	// Получить команду с участниками
 	// (GET /team/get)
-	GetTeamGet(w http.ResponseWriter, r *http.Request, params GetTeamGetParams)
+	GetTeamGet(w http.ResponseWriter, r *http.Request, params models.GetTeamGetParams)
 	// Получить PR'ы, где пользователь назначен ревьювером
 	// (GET /users/getReview)
-	GetUsersGetReview(w http.ResponseWriter, r *http.Request, params GetUsersGetReviewParams)
+	GetUsersGetReview(w http.ResponseWriter, r *http.Request, params models.GetUsersGetReviewParams)
 	// Установить флаг активности пользователя
 	// (POST /users/setIsActive)
 	PostUsersSetIsActive(w http.ResponseWriter, r *http.Request)
@@ -39,6 +41,14 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+type Server struct {
+	s *service.Service
+}
+
+func NewServer(s *service.Service) *Server {
+	return &Server{s: s}
+}
 
 // Создать PR и автоматически назначить до 2 ревьюверов из команды автора
 // (POST /pullRequest/create)
@@ -66,13 +76,13 @@ func (_ Unimplemented) PostTeamAdd(w http.ResponseWriter, r *http.Request) {
 
 // Получить команду с участниками
 // (GET /team/get)
-func (_ Unimplemented) GetTeamGet(w http.ResponseWriter, r *http.Request, params GetTeamGetParams) {
+func (_ Unimplemented) GetTeamGet(w http.ResponseWriter, r *http.Request, params models.GetTeamGetParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // Получить PR'ы, где пользователь назначен ревьювером
 // (GET /users/getReview)
-func (_ Unimplemented) GetUsersGetReview(w http.ResponseWriter, r *http.Request, params GetUsersGetReviewParams) {
+func (_ Unimplemented) GetUsersGetReview(w http.ResponseWriter, r *http.Request, params models.GetUsersGetReviewParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -153,7 +163,7 @@ func (siw *ServerInterfaceWrapper) GetTeamGet(w http.ResponseWriter, r *http.Req
 	var err error
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params GetTeamGetParams
+	var params models.GetTeamGetParams
 
 	// ------------- Required query parameter "team_name" -------------
 
@@ -187,7 +197,7 @@ func (siw *ServerInterfaceWrapper) GetUsersGetReview(w http.ResponseWriter, r *h
 	var err error
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params GetUsersGetReviewParams
+	var params models.GetUsersGetReviewParams
 
 	// ------------- Required query parameter "user_id" -------------
 
