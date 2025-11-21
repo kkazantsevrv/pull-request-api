@@ -5,6 +5,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -95,10 +96,21 @@ func (s *Server) PostPullRequestReassign(w http.ResponseWriter, r *http.Request)
 
 	pr, err := s.ser.ReassignReviewer(r.Context(), body)
 	if err != nil {
-		handleServiceError(w, err) //todo
+		if errors.Is(err, service.ErrPrecondition) {
+			sendError(w, http.StatusBadRequest, models.PRMERGED, "PR is merged")
+			return
+		}
+		if errors.Is(err, service.ErrInvalidInput) {
+			sendError(w, http.StatusBadRequest, models.NOTASSIGNED, "User not assigned")
+			return
+		}
+		if errors.Is(err, service.ErrConflict) {
+			sendError(w, http.StatusBadRequest, models.NOCANDIDATE, "No candidate available")
+			return
+		}
+		handleServiceError(w, err)
 		return
 	}
-
 	sendJSON(w, http.StatusOK, pr)
 }
 
@@ -161,7 +173,14 @@ func (s *Server) PostUsersSetIsActive(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleServiceError(w http.ResponseWriter, err error) {
-	sendError(w, http.StatusNotFound, models.NOTFOUND, "Not found")
+	switch {
+	case errors.Is(err, service.ErrNotFound):
+		sendError(w, http.StatusNotFound, models.NOTFOUND, "Not found")
+	case errors.Is(err, service.ErrConflict):
+		sendError(w, http.StatusConflict, models.PREXISTS, "Already exists")
+	default:
+		sendError(w, http.StatusInternalServerError, models.NOTFOUND, "Internal Server Error")
+	}
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
