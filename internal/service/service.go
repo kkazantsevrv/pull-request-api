@@ -94,13 +94,13 @@ func (s *Service) MergePullRequest(ctx context.Context, prID string) (*models.Pu
 		return nil, err
 	}
 
-	if status == "MERGED" {
+	if status == string(models.PullRequestStatusMERGED) {
 		//идемптоичнсть
 		return s.getPullRequest(ctx, prID)
 	}
 
-	_, err = tx.ExecContext(ctx, `UPDATE pull_requests SET status = 'MERGED', merged_at = CURRENT_TIMESTAMP 
-		WHERE pull_request_id = $1`, prID)
+	_, err = tx.ExecContext(ctx, `UPDATE pull_requests SET status = $1, merged_at = CURRENT_TIMESTAMP 
+		WHERE pull_request_id = $2`, models.PullRequestShortStatusMERGED, prID)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +126,7 @@ func (s *Service) ReassignReviewer(ctx context.Context, req models.PostPullReque
 	} else if err != nil {
 		return nil, err
 	}
-	if status == "MERGED" {
+	if status == string(models.PullRequestStatusMERGED) {
 		return nil, ErrPrecondition
 	}
 
@@ -256,9 +256,11 @@ func (s *Service) GetUsersReviews(ctx context.Context, userID string) ([]models.
 	var prs []models.PullRequestShort
 	for rows.Next() {
 		var pr models.PullRequestShort
-		if err := rows.Scan(&pr.PullRequestId, &pr.PullRequestName, &pr.AuthorId, &pr.Status); err != nil {
+		var statusStr string
+		if err := rows.Scan(&pr.PullRequestId, &pr.PullRequestName, &pr.AuthorId, &statusStr); err != nil {
 			return nil, err
 		}
+		pr.Status = models.PullRequestShortStatus(statusStr)
 		prs = append(prs, pr)
 	}
 	if prs == nil {
@@ -290,13 +292,16 @@ func (s *Service) SetUserActive(ctx context.Context, req models.PostUsersSetIsAc
 
 func (s *Service) getPullRequest(ctx context.Context, prID string) (*models.PullRequest, error) {
 	var pr models.PullRequest
+	var statusStr string
+
 	err := s.db.QueryRowContext(ctx, `
         SELECT pull_request_id, pull_request_name, author_id, status, created_at, merged_at 
         FROM pull_requests WHERE pull_request_id = $1
-    `, prID).Scan(&pr.PullRequestId, &pr.PullRequestName, &pr.AuthorId, &pr.Status, &pr.CreatedAt, &pr.MergedAt)
+    `, prID).Scan(&pr.PullRequestId, &pr.PullRequestName, &pr.AuthorId, &statusStr, &pr.CreatedAt, &pr.MergedAt)
 	if err != nil {
 		return nil, err
 	}
+	pr.Status = models.PullRequestStatus(statusStr)
 
 	rows, err := s.db.QueryContext(ctx, `SELECT reviewer_id FROM pr_reviewers WHERE pull_request_id = $1`, prID)
 	if err != nil {
