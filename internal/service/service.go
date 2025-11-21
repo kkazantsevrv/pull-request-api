@@ -42,7 +42,7 @@ func (s *Service) CreatePullRequest(ctx context.Context, req models.PostPullRequ
 	}
 
 	var authorTeam string
-	err = tx.QueryRowContext(ctx, `SELECT team_name FROM users WHERE user_id = $1`, req.AuthorId).Scan(&authorTeam)
+	err = tx.QueryRowContext(ctx, `SELECT team_name FROM users WHERE user_id = $1 FOR UPDATE`, req.AuthorId).Scan(&authorTeam)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
 	} else if err != nil {

@@ -31,6 +31,10 @@ func main() {
 	}
 	defer dbConn.Close()
 
+	if err := database.Migrate(dbConn, dbName); err != nil {
+		log.Fatalf("Migration failed: %v", err)
+	}
+
 	ser := service.NewService(dbConn)
 	server := api.NewServer(ser)
 

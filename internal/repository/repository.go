@@ -2,11 +2,14 @@ package database
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"time"
 
-	_ "github.com/lib/pq"
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
 func Connect(dsn string) (*sql.DB, error) {
@@ -29,39 +32,25 @@ func Connect(dsn string) (*sql.DB, error) {
 	return nil, fmt.Errorf("could not connect to database after retries: %w", err)
 }
 
-func Migrate(db *sql.DB) error {
-	queries := []string{
-		`CREATE TABLE IF NOT EXISTS teams (
-            team_name TEXT PRIMARY KEY
-        );`,
-		`CREATE TABLE IF NOT EXISTS users (
-            user_id TEXT PRIMARY KEY,
-            username TEXT NOT NULL,
-            team_name TEXT REFERENCES teams(team_name) ON DELETE CASCADE,
-            is_active BOOLEAN DEFAULT TRUE
-        );`,
-		`CREATE TABLE IF NOT EXISTS pull_requests (
-            pull_request_id TEXT PRIMARY KEY,
-            pull_request_name TEXT NOT NULL,
-            author_id TEXT REFERENCES users(user_id) ON DELETE CASCADE,
-            status TEXT NOT NULL DEFAULT 'OPEN',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            merged_at TIMESTAMP
-        );`,
-		`CREATE TABLE IF NOT EXISTS pr_reviewers (
-            pull_request_id TEXT REFERENCES pull_requests(pull_request_id) ON DELETE CASCADE,
-            reviewer_id TEXT REFERENCES users(user_id) ON DELETE CASCADE,
-            PRIMARY KEY (pull_request_id, reviewer_id)
-        );`,
+func Migrate(db *sql.DB, dbName string) error {
+	driver, err := postgres.WithInstance(db, &postgres.Config{})
+	if err != nil {
+		return err
 	}
 
-	for _, q := range queries {
-		_, err := db.Exec(q)
-		if err != nil {
-			return fmt.Errorf("migration failed on query: %s, error: %w", q, err)
-		}
+	m, err := migrate.NewWithDatabaseInstance(
+		"file://migrations",
+		dbName,
+		driver,
+	)
+	if err != nil {
+		return err
 	}
 
-	log.Println("Database migration completed successfully")
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return err
+	}
+
+	log.Println("Migrations applied successfully")
 	return nil
 }
