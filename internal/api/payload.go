@@ -22,8 +22,7 @@ func sendError(w http.ResponseWriter, status int, code models.ErrorResponseError
 	json.NewEncoder(w).Encode(errResp)
 }
 
-// Вспомогательная функция для отправки JSON
-func sendJSON(w http.ResponseWriter, status int, data interface{}) {
+func sendJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(data)

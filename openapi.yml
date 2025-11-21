@@ -102,7 +102,7 @@ components:
         createdAt:
           type: string
           format: date-time
-          nullable: true
+          nullable: true  
         mergedAt:
           type: string
           format: date-time

@@ -4,6 +4,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -39,57 +40,128 @@ type ServerInterface interface {
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
-
-type Unimplemented struct{}
-
 type Server struct {
-	s *service.Service
+	ser *service.Service
 }
 
-func NewServer(s *service.Service) *Server {
-	return &Server{s: s}
+func NewServer(ser *service.Service) *Server {
+	return &Server{ser: ser}
 }
 
 // Создать PR и автоматически назначить до 2 ревьюверов из команды автора
 // (POST /pullRequest/create)
-func (_ Unimplemented) PostPullRequestCreate(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
+func (s *Server) PostPullRequestCreate(w http.ResponseWriter, r *http.Request) {
+	var body models.PostPullRequestCreateJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sendError(w, http.StatusBadRequest, models.NOTFOUND, "Invalid body")
+		return
+	}
+
+	pr, err := s.ser.CreatePullRequest(r.Context(), body)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	sendJSON(w, http.StatusOK, pr)
 }
 
 // Пометить PR как MERGED (идемпотентная операция)
 // (POST /pullRequest/merge)
-func (_ Unimplemented) PostPullRequestMerge(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
+func (s *Server) PostPullRequestMerge(w http.ResponseWriter, r *http.Request) {
+	var body models.PostPullRequestMergeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sendError(w, http.StatusBadRequest, models.NOTFOUND, "Invalid body")
+		return
+	}
+
+	pr, err := s.ser.MergePullRequest(r.Context(), body.PullRequestId)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	sendJSON(w, http.StatusOK, pr)
 }
 
 // Переназначить конкретного ревьювера на другого из его команды
 // (POST /pullRequest/reassign)
-func (_ Unimplemented) PostPullRequestReassign(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
+func (s *Server) PostPullRequestReassign(w http.ResponseWriter, r *http.Request) {
+	var body models.PostPullRequestReassignJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sendError(w, http.StatusBadRequest, models.NOTFOUND, "Invalid body")
+		return
+	}
+
+	pr, err := s.ser.ReassignReviewer(r.Context(), body)
+	if err != nil {
+		handleServiceError(w, err) //todo
+		return
+	}
+
+	sendJSON(w, http.StatusOK, pr)
 }
 
 // Создать команду с участниками (создаёт/обновляет пользователей)
 // (POST /team/add)
-func (_ Unimplemented) PostTeamAdd(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
+func (s *Server) PostTeamAdd(w http.ResponseWriter, r *http.Request) {
+	var body models.Team
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sendError(w, http.StatusBadRequest, models.NOTFOUND, "Invalid body")
+		return
+	}
+
+	err := s.ser.AddTeam(r.Context(), body)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	sendJSON(w, http.StatusOK, body)
 }
 
 // Получить команду с участниками
 // (GET /team/get)
-func (_ Unimplemented) GetTeamGet(w http.ResponseWriter, r *http.Request, params models.GetTeamGetParams) {
-	w.WriteHeader(http.StatusNotImplemented)
+func (s *Server) GetTeamGet(w http.ResponseWriter, r *http.Request, params models.GetTeamGetParams) {
+	team, err := s.ser.GetTeam(r.Context(), params.TeamName)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+	sendJSON(w, http.StatusOK, team)
 }
 
 // Получить PR'ы, где пользователь назначен ревьювером
 // (GET /users/getReview)
-func (_ Unimplemented) GetUsersGetReview(w http.ResponseWriter, r *http.Request, params models.GetUsersGetReviewParams) {
-	w.WriteHeader(http.StatusNotImplemented)
+func (s *Server) GetUsersGetReview(w http.ResponseWriter, r *http.Request, params models.GetUsersGetReviewParams) {
+	prs, err := s.ser.GetUsersReviews(r.Context(), params.UserId)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+	sendJSON(w, http.StatusOK, prs)
 }
 
 // Установить флаг активности пользователя
 // (POST /users/setIsActive)
-func (_ Unimplemented) PostUsersSetIsActive(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
+func (s *Server) PostUsersSetIsActive(w http.ResponseWriter, r *http.Request) {
+	var body models.PostUsersSetIsActiveJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sendError(w, http.StatusBadRequest, models.NOTFOUND, "Invalid request body")
+		return
+	}
+
+	user, err := s.ser.SetUserActive(r.Context(), body)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	sendJSON(w, http.StatusOK, user)
+}
+
+func handleServiceError(w http.ResponseWriter, err error) {
+	sendError(w, http.StatusNotFound, models.NOTFOUND, "Not found")
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.

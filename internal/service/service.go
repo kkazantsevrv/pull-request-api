@@ -41,8 +41,8 @@ func (s *Service) CreatePullRequest(ctx context.Context, req models.PostPullRequ
 	}
 
 	_, err = tx.ExecContext(ctx, `INSERT INTO pull_requests (pull_request_id, pull_request_name, author_id, status) 
-		VALUES ($1, $2, $3, 'OPEN')`,
-		req.PullRequestId, req.PullRequestName, req.AuthorId)
+		VALUES ($1, $2, $3, $4)`,
+		req.PullRequestId, req.PullRequestName, req.AuthorId, models.PullRequestStatusOPEN)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +127,7 @@ func (s *Service) ReassignReviewer(ctx context.Context, req models.PostPullReque
 		return nil, err
 	}
 	if status == "MERGED" {
-		return nil, ErrPrecondition // PRMerged
+		return nil, ErrPrecondition
 	}
 
 	var assigned bool
@@ -136,7 +136,7 @@ func (s *Service) ReassignReviewer(ctx context.Context, req models.PostPullReque
 		return nil, err
 	}
 	if !assigned {
-		return nil, ErrInvalidInput // User not assigned
+		return nil, ErrInvalidInput //нет юзера
 	}
 
 	var oldTeam string
