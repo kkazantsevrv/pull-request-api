@@ -21,7 +21,16 @@ func (s *Service) CreatePullRequest(ctx context.Context, req models.PostPullRequ
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() {
+		if p := recover(); p != nil {
+			_ = tx.Rollback()
+			panic(p)
+		} else if err != nil {
+			_ = tx.Rollback()
+		} else {
+			err = tx.Commit()
+		}
+	}()
 
 	var exists bool
 	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pull_requests WHERE pull_requests_id = $1)`, req.PullRequestId).Scan(&exists)
@@ -73,11 +82,6 @@ func (s *Service) CreatePullRequest(ctx context.Context, req models.PostPullRequ
 			return nil, err
 		}
 	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-
 	return s.getPullRequest(ctx, req.PullRequestId)
 }
 
@@ -86,7 +90,16 @@ func (s *Service) MergePullRequest(ctx context.Context, prID string) (*models.Pu
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() {
+		if p := recover(); p != nil {
+			_ = tx.Rollback()
+			panic(p)
+		} else if err != nil {
+			_ = tx.Rollback()
+		} else {
+			err = tx.Commit()
+		}
+	}()
 
 	var status string
 	err = tx.QueryRowContext(ctx, `SELECT status FROM pull_requests WHERE pull_request_id = $1`, prID).Scan(&status)
@@ -105,10 +118,6 @@ func (s *Service) MergePullRequest(ctx context.Context, prID string) (*models.Pu
 		return nil, err
 	}
 
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-
 	return s.getPullRequest(ctx, prID)
 }
 
@@ -117,7 +126,16 @@ func (s *Service) ReassignReviewer(ctx context.Context, req models.PostPullReque
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() {
+		if p := recover(); p != nil {
+			_ = tx.Rollback()
+			panic(p)
+		} else if err != nil {
+			_ = tx.Rollback()
+		} else {
+			err = tx.Commit()
+		}
+	}()
 
 	var status string
 	err = tx.QueryRowContext(ctx, `SELECT status FROM pull_request WHERE pull_request_id = $1`, req.PullRequestId).Scan(&status)
@@ -182,10 +200,6 @@ func (s *Service) ReassignReviewer(ctx context.Context, req models.PostPullReque
 		return nil, err
 	}
 
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-
 	return s.getPullRequest(ctx, req.PullRequestId)
 }
 
@@ -194,7 +208,16 @@ func (s *Service) AddTeam(ctx context.Context, team models.Team) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		if p := recover(); p != nil {
+			_ = tx.Rollback()
+			panic(p)
+		} else if err != nil {
+			_ = tx.Rollback()
+		} else {
+			err = tx.Commit()
+		}
+	}()
 
 	_, err = tx.ExecContext(ctx, "INSERT INTO teams (team_name) VALUES ($1) ON CONFLICT (team_name) DO NOTHING", team.TeamName)
 	if err != nil {
@@ -212,7 +235,7 @@ func (s *Service) AddTeam(ctx context.Context, team models.Team) error {
 		}
 	}
 
-	return tx.Commit()
+	return nil
 }
 
 func (s *Service) GetTeam(ctx context.Context, teamName string) (*models.Team, error) {
