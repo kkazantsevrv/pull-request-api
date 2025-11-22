@@ -9,15 +9,15 @@ import (
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/chi/v5"
 	"pull-request-api.com/internal/api"
-	database "pull-request-api.com/internal/repository"
+	database "pull-request-api.com/internal/database"
 	"pull-request-api.com/internal/service"
 )
 
 const (
-	dbHost     = "postgres"
+	dbHost     = "localhost"
 	dbPort     = "5432"
 	dbUser     = "postgres"
-	dbPassword = "postgres"
+	dbPassword = "mart2011"
 	dbName     = "prdb"
 )
 
@@ -31,7 +31,7 @@ func main() {
 	}
 	defer dbConn.Close()
 
-	if err := database.Migrate(dbConn, dbName); err != nil {
+	if err := database.Migrate(dbConn, dbName, "file://migrations"); err != nil {
 		log.Fatalf("Migration failed: %v", err)
 	}
 

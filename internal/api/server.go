@@ -38,6 +38,9 @@ type ServerInterface interface {
 	// Установить флаг активности пользователя
 	// (POST /users/setIsActive)
 	PostUsersSetIsActive(w http.ResponseWriter, r *http.Request)
+	// эндпоинт статистики (например, количество назначений по пользователям)
+	// (GET /users/getAssignmentStats
+	GetAssignmentStats(w http.ResponseWriter, r *http.Request)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -141,6 +144,17 @@ func (s *Server) GetTeamGet(w http.ResponseWriter, r *http.Request, params model
 		return
 	}
 	sendJSON(w, http.StatusOK, team)
+}
+
+// Получить статистику назначенных ревью
+// (GET /users/get)
+func (s *Server) GetAssignmentStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := s.ser.GetAssignmentStats(r.Context())
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+	sendJSON(w, http.StatusOK, stats)
 }
 
 // Получить PR'ы, где пользователь назначен ревьювером
@@ -273,6 +287,19 @@ func (siw *ServerInterfaceWrapper) GetTeamGet(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetTeamGet(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAssignmentStats operation middleware
+func (siw *ServerInterfaceWrapper) GetAssignmentStats(w http.ResponseWriter, r *http.Request) {
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAssignmentStats(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -457,6 +484,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/team/get", wrapper.GetTeamGet)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/users/getAssignmentStats", wrapper.GetAssignmentStats)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/users/getReview", wrapper.GetUsersGetReview)

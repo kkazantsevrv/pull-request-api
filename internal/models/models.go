@@ -87,6 +87,11 @@ type User struct {
 	Username string `json:"username"`
 }
 
+type AssignmentStats struct {
+	UserId string `json:"user_id"`
+	Count  int    `json:"count"`
+}
+
 // TeamNameQuery defines model for TeamNameQuery.
 type TeamNameQuery = string
 

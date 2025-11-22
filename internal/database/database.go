@@ -32,14 +32,14 @@ func Connect(dsn string) (*sql.DB, error) {
 	return nil, fmt.Errorf("could not connect to database after retries: %w", err)
 }
 
-func Migrate(db *sql.DB, dbName string) error {
+func Migrate(db *sql.DB, dbName string, sourceURL string) error {
 	driver, err := postgres.WithInstance(db, &postgres.Config{})
 	if err != nil {
 		return err
 	}
 
 	m, err := migrate.NewWithDatabaseInstance(
-		"file://migrations",
+		sourceURL,
 		dbName,
 		driver,
 	)
@@ -50,7 +50,5 @@ func Migrate(db *sql.DB, dbName string) error {
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return err
 	}
-
-	log.Println("Migrations applied successfully")
 	return nil
 }

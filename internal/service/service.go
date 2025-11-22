@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"math/rand"
+	"time"
 
 	"pull-request-api.com/internal/models"
 )
@@ -21,26 +22,16 @@ func (s *Service) CreatePullRequest(ctx context.Context, req models.PostPullRequ
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if p := recover(); p != nil {
-			_ = tx.Rollback()
-			panic(p)
-		} else if err != nil {
-			_ = tx.Rollback()
-		} else {
-			err = tx.Commit()
-		}
-	}()
+	defer tx.Rollback()
 
 	var exists bool
-	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pull_requests WHERE pull_requests_id = $1)`, req.PullRequestId).Scan(&exists)
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pull_requests WHERE pull_request_id = $1)`, req.PullRequestId).Scan(&exists)
 	if err != nil {
 		return nil, err
 	}
 	if exists {
 		return nil, ErrConflict
 	}
-
 	var authorTeam string
 	err = tx.QueryRowContext(ctx, `SELECT team_name FROM users WHERE user_id = $1 FOR UPDATE`, req.AuthorId).Scan(&authorTeam)
 	if err == sql.ErrNoRows {
@@ -55,7 +46,6 @@ func (s *Service) CreatePullRequest(ctx context.Context, req models.PostPullRequ
 	if err != nil {
 		return nil, err
 	}
-
 	rows, err := tx.QueryContext(ctx, `SELECT user_id FROM users 
 		WHERE team_name = $1 AND is_active = TRUE AND user_id != $2`, authorTeam, req.AuthorId)
 	if err != nil {
@@ -82,6 +72,11 @@ func (s *Service) CreatePullRequest(ctx context.Context, req models.PostPullRequ
 			return nil, err
 		}
 	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
 	return s.getPullRequest(ctx, req.PullRequestId)
 }
 
@@ -90,16 +85,7 @@ func (s *Service) MergePullRequest(ctx context.Context, prID string) (*models.Pu
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if p := recover(); p != nil {
-			_ = tx.Rollback()
-			panic(p)
-		} else if err != nil {
-			_ = tx.Rollback()
-		} else {
-			err = tx.Commit()
-		}
-	}()
+	defer tx.Rollback()
 
 	var status string
 	err = tx.QueryRowContext(ctx, `SELECT status FROM pull_requests WHERE pull_request_id = $1`, prID).Scan(&status)
@@ -118,6 +104,10 @@ func (s *Service) MergePullRequest(ctx context.Context, prID string) (*models.Pu
 		return nil, err
 	}
 
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
 	return s.getPullRequest(ctx, prID)
 }
 
@@ -126,19 +116,10 @@ func (s *Service) ReassignReviewer(ctx context.Context, req models.PostPullReque
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if p := recover(); p != nil {
-			_ = tx.Rollback()
-			panic(p)
-		} else if err != nil {
-			_ = tx.Rollback()
-		} else {
-			err = tx.Commit()
-		}
-	}()
+	defer tx.Rollback()
 
 	var status string
-	err = tx.QueryRowContext(ctx, `SELECT status FROM pull_request WHERE pull_request_id = $1`, req.PullRequestId).Scan(&status)
+	err = tx.QueryRowContext(ctx, `SELECT status FROM pull_requests WHERE pull_request_id = $1`, req.PullRequestId).Scan(&status)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
 	} else if err != nil {
@@ -147,7 +128,6 @@ func (s *Service) ReassignReviewer(ctx context.Context, req models.PostPullReque
 	if status == string(models.PullRequestStatusMERGED) {
 		return nil, ErrPrecondition
 	}
-
 	var assigned bool
 	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pr_reviewers WHERE pull_request_id = $1 AND reviewer_id = $2)`, req.PullRequestId, req.OldUserId).Scan(&assigned)
 	if err != nil {
@@ -200,6 +180,10 @@ func (s *Service) ReassignReviewer(ctx context.Context, req models.PostPullReque
 		return nil, err
 	}
 
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
 	return s.getPullRequest(ctx, req.PullRequestId)
 }
 
@@ -208,16 +192,7 @@ func (s *Service) AddTeam(ctx context.Context, team models.Team) error {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if p := recover(); p != nil {
-			_ = tx.Rollback()
-			panic(p)
-		} else if err != nil {
-			_ = tx.Rollback()
-		} else {
-			err = tx.Commit()
-		}
-	}()
+	defer tx.Rollback()
 
 	_, err = tx.ExecContext(ctx, "INSERT INTO teams (team_name) VALUES ($1) ON CONFLICT (team_name) DO NOTHING", team.TeamName)
 	if err != nil {
@@ -235,11 +210,11 @@ func (s *Service) AddTeam(ctx context.Context, team models.Team) error {
 		}
 	}
 
-	return nil
+	return tx.Commit()
 }
 
 func (s *Service) GetTeam(ctx context.Context, teamName string) (*models.Team, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT user_id, username, is_active FROM users WHERE team_name  = $1`, teamName)
+	rows, err := s.db.QueryContext(ctx, `SELECT user_id, username, is_active FROM users WHERE team_name = $1`, teamName)
 	if err != nil {
 		return nil, err
 	}
@@ -248,10 +223,13 @@ func (s *Service) GetTeam(ctx context.Context, teamName string) (*models.Team, e
 	var members []models.TeamMember
 	for rows.Next() {
 		var m models.TeamMember
-		if err := rows.Scan(&m); err != nil {
+		if err := rows.Scan(&m.UserId, &m.Username, &m.IsActive); err != nil {
 			return nil, err
 		}
 		members = append(members, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	if len(members) == 0 {
@@ -286,6 +264,9 @@ func (s *Service) GetUsersReviews(ctx context.Context, userID string) ([]models.
 		pr.Status = models.PullRequestShortStatus(statusStr)
 		prs = append(prs, pr)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	if prs == nil {
 		prs = []models.PullRequestShort{}
 	}
@@ -313,18 +294,60 @@ func (s *Service) SetUserActive(ctx context.Context, req models.PostUsersSetIsAc
 	return &user, nil
 }
 
+func (s *Service) GetAssignmentStats(ctx context.Context) ([]models.AssignmentStats, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT reviewer_id, COUNT(*) FROM pr_reviewers GROUP BY reviewer_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var stats []models.AssignmentStats
+	for rows.Next() {
+		var stat models.AssignmentStats
+		if err := rows.Scan(&stat.UserId, &stat.Count); err != nil {
+			return nil, err
+		}
+		stats = append(stats, stat)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return stats, nil
+}
+
 func (s *Service) getPullRequest(ctx context.Context, prID string) (*models.PullRequest, error) {
 	var pr models.PullRequest
 	var statusStr string
 
+	var createdAt time.Time
+	var mergedAt sql.NullTime
+
 	err := s.db.QueryRowContext(ctx, `
         SELECT pull_request_id, pull_request_name, author_id, status, created_at, merged_at 
         FROM pull_requests WHERE pull_request_id = $1
-    `, prID).Scan(&pr.PullRequestId, &pr.PullRequestName, &pr.AuthorId, &statusStr, &pr.CreatedAt, &pr.MergedAt)
+    `, prID).Scan(
+		&pr.PullRequestId,
+		&pr.PullRequestName,
+		&pr.AuthorId,
+		&statusStr,
+		&createdAt,
+		&mergedAt,
+	)
+
 	if err != nil {
 		return nil, err
 	}
+
 	pr.Status = models.PullRequestStatus(statusStr)
+
+	pr.CreatedAt = &createdAt
+
+	if mergedAt.Valid {
+		pr.MergedAt = &mergedAt.Time
+	} else {
+		pr.MergedAt = nil
+	}
 
 	rows, err := s.db.QueryContext(ctx, `SELECT reviewer_id FROM pr_reviewers WHERE pull_request_id = $1`, prID)
 	if err != nil {
