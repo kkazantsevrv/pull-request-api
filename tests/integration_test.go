@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -22,23 +23,40 @@ import (
 	"pull-request-api.com/internal/service"
 )
 
-const testConnString = "host=localhost port=55432 user=postgres password=postgres dbname=prdb_test sslmode=disable"
-
 var testDB *sql.DB
 
+func getEnv(key, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	return fallback
+}
+
 func TestMain(m *testing.M) {
+	dbHost := getEnv("TEST_DB_HOST", "localhost")
+	dbPort := getEnv("TEST_DB_PORT", "55432")
+	dbUser := getEnv("DB_USER", "postgres")
+	dbPassword := getEnv("DB_PASSWORD", "postgres")
+	dbName := getEnv("DB_NAME", "prdb_test")
+
+	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		dbHost, dbPort, dbUser, dbPassword, dbName)
+
 	var err error
-	testDB, err = sql.Open("postgres", testConnString)
-	if err != nil {
-		log.Fatalf("Could not connect to test DB: %v", err)
+	for i := 0; i < 10; i++ {
+		testDB, err = sql.Open("postgres", connStr)
+		if err == nil && testDB.Ping() == nil {
+			break
+		}
+		time.Sleep(time.Second)
 	}
 
-	if err := testDB.Ping(); err != nil {
-		log.Printf("Skipping integration tests: DB not available (%v)", err)
-		os.Exit(0)
+	if err != nil || testDB.Ping() != nil {
+		log.Fatalf("Cannot connect to test DB: %v", err)
 	}
 
 	teardownDB()
+
 	if err := database.Migrate(testDB, "prdb_test", "file://../migrations"); err != nil {
 		log.Fatalf("Migration failed: %v", err)
 	}
@@ -100,6 +118,7 @@ func TestIntegration_FullFlow_CreateAndMerge(t *testing.T) {
 	respMerge := postRequest(t, router, "/pullRequest/merge", mergeBody, http.StatusOK)
 
 	json.Unmarshal(respMerge, &pr)
+	time.Sleep(2 * time.Second)
 	assert.Equal(t, models.PullRequestStatusMERGED, pr.Status)
 	assert.NotNil(t, pr.MergedAt)
 
@@ -139,7 +158,6 @@ func TestIntegration_ReassignReviewer(t *testing.T) {
 
 	var prUpdated models.PullRequest
 	json.Unmarshal(respReassign, &prUpdated)
-	time.Sleep(1 * time.Second)
 	assert.NotContains(t, prUpdated.AssignedReviewers, oldReviewer, "Старый ревьювер должен исчезнуть")
 	assert.Contains(t, prUpdated.AssignedReviewers, "free_cand", "Свободный кандидат должен появиться (т.к. он единственный оставшийся)")
 }
@@ -165,7 +183,7 @@ func TestIntegration_ErrorsAndEdgeCases(t *testing.T) {
 
 	postRequest(t, router, "/pullRequest/merge", models.PostPullRequestMergeJSONRequestBody{PullRequestId: "PR-1"}, http.StatusOK)
 
-	reassign := models.PostPullRequestReassignJSONRequestBody{PullRequestId: "PR-1", OldUserId: "u2"} // u2 был создан в setupUser
+	reassign := models.PostPullRequestReassignJSONRequestBody{PullRequestId: "PR-1", OldUserId: "u2"}
 	respMerged := postRequest(t, router, "/pullRequest/reassign", reassign, http.StatusBadRequest)
 	assert.Contains(t, string(respMerged), string(models.PRMERGED))
 }
